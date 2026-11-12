@@ -6,6 +6,11 @@ import (
 )
 
 func nextDateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
 	nowStr := r.URL.Query().Get("now")
@@ -16,7 +21,7 @@ func nextDateHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if nowStr != "" {
-		now, err = time.Parse("20060102", nowStr)
+		now, err = time.Parse(dateLayout, nowStr)
 		if err != nil {
 			w.Write([]byte(""))
 			return
@@ -51,14 +56,14 @@ func TaskHandler(w http.ResponseWriter, r *http.Request) {
 		deleteTaskHandler(w, r)
 	default:
 		http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
-
 	}
 }
 
 func Init(mux *http.ServeMux) {
+	InitAuth()
 	mux.HandleFunc("/api/nextdate", nextDateHandler)
-	mux.HandleFunc("/api/task", TaskHandler)
-	mux.HandleFunc("/api/tasks", tasksHandler)
-	mux.HandleFunc("/api/task/done", doneHandler)
 	mux.HandleFunc("/api/signin", singInHandler)
+	mux.HandleFunc("/api/task", auth(TaskHandler))
+	mux.HandleFunc("/api/tasks", auth(tasksHandler))
+	mux.HandleFunc("/api/task/done", auth(doneHandler))
 }

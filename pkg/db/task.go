@@ -2,7 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
 )
 
@@ -15,9 +14,6 @@ type Task struct {
 }
 
 func Tasks(limit int, search string) ([]*Task, error) {
-	if limit <= 0 {
-		limit = 50
-	}
 	var rows *sql.Rows
 	var err error
 
@@ -65,9 +61,6 @@ func GetTask(id string) (*Task, error) {
 	err := db.QueryRow(`SELECT id, date, title, comment, repeat FROM scheduler WHERE id = ?`, id).
 		Scan(&t.ID, &t.Date, &t.Title, &t.Comment, &t.Repeat)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("задача не найдена")
-		}
 		return nil, err
 	}
 	return t, nil
@@ -84,7 +77,7 @@ func UpdateTask(task *Task) error {
 		return err
 	}
 	if count == 0 {
-		return fmt.Errorf(`incorrect id for updating task`)
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -92,14 +85,14 @@ func UpdateTask(task *Task) error {
 func DeleteTask(id string) error {
 	res, err := db.Exec(`DELETE FROM scheduler WHERE id = ?`, id)
 	if err != nil {
-		return nil
+		return err
 	}
 	count, err := res.RowsAffected()
 	if err != nil {
 		return err
 	}
 	if count == 0 {
-		return fmt.Errorf("задача не найдена")
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -114,7 +107,7 @@ func UpdateDate(next string, id string) error {
 		return err
 	}
 	if count == 0 {
-		return fmt.Errorf("задача не найдена")
+		return sql.ErrNoRows
 	}
 	return nil
 }

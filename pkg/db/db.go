@@ -28,11 +28,19 @@ func InitDB(path string) error {
 	}
 
 	if err = db.Ping(); err != nil {
+		db.Close()
 		return err
 	}
 
 	_, err = db.Exec(schema)
 	return err
+}
+
+func Close() error {
+	if db == nil {
+		return nil
+	}
+	return db.Close()
 }
 
 func AddTask(task *Task) (int64, error) {

@@ -18,6 +18,7 @@ func main() {
 	if err := db.InitDB(dbFile); err != nil {
 		log.Fatalf("не удалось инициализировать БД: %v", err)
 	}
+	defer db.Close()
 
 	webDir, err := filepath.Abs("web")
 	if err != nil {

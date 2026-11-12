@@ -11,6 +11,15 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// appPassword — пароль из окружения, считывается один раз в Init.
+// Пустая строка означает, что аутентификация отключена.
+var appPassword string
+
+// InitAuth читает конфигурацию один раз при старте.
+func InitAuth() {
+	appPassword = os.Getenv("TODO_PASSWORD")
+}
+
 func passwordHash(pass string) string {
 	h := sha256.Sum256([]byte(pass))
 	return hex.EncodeToString(h[:])
@@ -39,7 +48,11 @@ func validateJWT(jwtStr, pass string) bool {
 	if !ok {
 		return false
 	}
-	return claims["pass_hash"] == passwordHash(pass)
+	hash, ok := claims["pass_hash"].(string)
+	if !ok {
+		return false
+	}
+	return hash == passwordHash(pass)
 }
 
 func singInHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,31 +60,29 @@ func singInHandler(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, map[string]string{"error": "ошибка десериализации JSON"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ошибка десериализации JSON"})
 		return
 	}
-	pass := os.Getenv("TODO_PASSWORD")
-	if req.Password != pass {
-		writeJSON(w, map[string]string{"error": "Неверный пароль"})
+	if req.Password != appPassword {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Неверный пароль"})
 		return
 	}
-	token, err := buildJWT(pass)
+	token, err := buildJWT(appPassword)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": "не удалось создать токен"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "не удалось создать токен"})
 		return
 	}
-	writeJSON(w, map[string]string{"token": token})
+	writeJSON(w, http.StatusOK, map[string]string{"token": token})
 }
 
 func auth(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pass := os.Getenv("TODO_PASSWORD")
-		if len(pass) > 0 {
+		if appPassword != "" {
 			var jwtStr string
 			if cookie, err := r.Cookie("token"); err == nil {
 				jwtStr = cookie.Value
 			}
-			if !validateJWT(jwtStr, pass) {
+			if !validateJWT(jwtStr, appPassword) {
 				http.Error(w, "Authentification required", http.StatusUnauthorized)
 				return
 			}

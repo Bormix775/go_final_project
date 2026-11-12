@@ -9,11 +9,14 @@ import (
 
 const dateLayout = "20060102"
 
+const searchLimit = 10
+
 var (
 	ErrInvalidDateFormat    = errors.New("неверный формат даты")
 	ErrInvalidRepeatFormat  = errors.New("неверный формат правила повторения")
 	ErrUnsupportedRule      = errors.New("неподдерживаемое правило повторения")
 	ErrInvalidIntervalValue = errors.New("недопустимое значение интервала")
+	ErrNoMatchDate          = errors.New("правило повторения не содержит допустимой даты")
 )
 
 func afterNow(date, now time.Time) bool {
@@ -80,9 +83,7 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 		}
 
 		for {
-			wd := int(date.Weekday())
-
-			wdNorm := (wd+6)%7 + 1
+			wdNorm := (int(date.Weekday())+6)%7 + 1
 
 			if dayMask[wdNorm] && afterNow(date, now) {
 				return date.Format(dateLayout), nil
@@ -93,14 +94,15 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 	}
 
 	if rule == "m" {
+		// Формат правила: "m <дни> [месяцы]"
+		// Дни — числа месяца через запятую: 1..31, а также -1 и -2
+		// (последний и предпоследний день месяца)
+		// Месяцы — необязательная вторая часть: номера 1..12 через запятую
 		if len(parts) < 2 {
 			return "", ErrInvalidRepeatFormat
 		}
 
 		subParts := strings.Split(parts[1], " ")
-		if len(subParts) == 0 {
-			return "", ErrInvalidRepeatFormat
-		}
 
 		days := strings.Split(subParts[0], ",")
 		var validDays [32]bool
@@ -122,53 +124,41 @@ func NextDate(now time.Time, dstart string, repeat string) (string, error) {
 				return "", ErrInvalidRepeatFormat
 			}
 		}
-
 		var validMonths [13]bool
-		monthsOk := true
 		if len(subParts) > 1 {
-			monthList := strings.Split(subParts[1], ",")
-			for _, mStr := range monthList {
+			for _, mStr := range strings.Split(subParts[1], ",") {
 				m, err := strconv.Atoi(mStr)
 				if err != nil || m < 1 || m > 12 {
-					monthsOk = false
-					break
+					return "", ErrInvalidRepeatFormat
 				}
 				validMonths[m] = true
 			}
-			if !monthsOk {
-				return "", ErrInvalidRepeatFormat
-			}
 		}
-
-		for {
+		// Ограничиваем поиск во времени: правило может быть неосуществимо
+		// (например, "m 31 2" — 31-го февраля не бывает), и без предела
+		// цикл выполнялся бы вечно, подвешивая сервер.
+		limit := now.AddDate(searchLimit, 0, 0)
+		for date.Before(limit) {
 			dy := date.Day()
 			mo := int(date.Month())
 			yr := date.Year()
 			loc := date.Location()
-
 			matchDay := validDays[dy]
-
 			lastDay := time.Date(yr, time.Month(mo), 1, 0, 0, 0, 0, loc).AddDate(0, 1, -1).Day()
-
 			if hasLast && dy == lastDay {
 				matchDay = true
 			}
 			if hasSecondLast && dy == lastDay-1 {
 				matchDay = true
 			}
-
-			matchMonth := true
-			if len(subParts) > 1 {
-				matchMonth = validMonths[mo]
-			}
+			matchMonth := len(subParts) <= 1 || validMonths[mo]
 
 			if matchDay && matchMonth && afterNow(date, now) {
 				return date.Format(dateLayout), nil
 			}
-
 			date = date.AddDate(0, 0, 1)
 		}
+		return "", ErrNoMatchDate
 	}
-
 	return "", ErrUnsupportedRule
 }
